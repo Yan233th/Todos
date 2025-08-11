@@ -17,10 +17,10 @@ app.use(express.json());
 
 // 创建数据库连接（不指定数据库名称，用于创建数据库）
 const dbInit = mysql.createConnection({
-  host: process.env.DB_HOST || '10.0.3.101',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password'
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD
 });
 
 // 初始化数据库和表
@@ -46,11 +46,11 @@ function initializeDatabase() {
       
       // 创建新的连接到指定数据库
       db = mysql.createConnection({
-        host: process.env.DB_HOST || '10.0.3.101',
-        port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || 'password',
-        database: process.env.DB_NAME || 'todos_db'
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME
       });
       
       // 连接到指定数据库
@@ -68,6 +68,7 @@ function initializeDatabase() {
             username VARCHAR(50) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             role VARCHAR(20) DEFAULT 'user',
+            \`group\` VARCHAR(50) DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `;
@@ -96,8 +97,8 @@ function initializeDefaultUsers(db) {
   const userPassword = bcrypt.hashSync('user123', 10);
   
   const defaultUsers = [
-    { username: 'admin', password: adminPassword, role: 'admin' },
-    { username: 'user', password: userPassword, role: 'user' }
+    { username: 'admin', password: adminPassword, role: 'admin', group: null },
+    { username: 'user', password: userPassword, role: 'user', group: null }
   ];
   
   defaultUsers.forEach(user => {
@@ -127,7 +128,7 @@ function initializeDefaultUsers(db) {
 
 // 注册API
 app.post('/register', (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, group } = req.body;
   
   if (!username || !password) {
     return res.status(400).json({ message: '用户名和密码是必需的' });
@@ -152,8 +153,8 @@ app.post('/register', (req, res) => {
     const userRole = role || 'user';
     
     // 插入新用户
-    const insertQuery = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
-    db.query(insertQuery, [username, hashedPassword, userRole], (err, results) => {
+    const insertQuery = 'INSERT INTO users (username, password, role, `group`) VALUES (?, ?, ?, ?)';
+    db.query(insertQuery, [username, hashedPassword, userRole, group || null], (err, results) => {
       if (err) {
         console.error('插入用户失败:', err);
         return res.status(500).json({ message: '服务器内部错误' });
@@ -202,7 +203,8 @@ app.post('/login', (req, res) => {
         { 
           userId: user.id, 
           username: user.username, 
-          role: user.role 
+          role: user.role,
+          group: user.group || null
         }, 
         process.env.JWT_SECRET || 'your_jwt_secret_key',
         { expiresIn: '1h' }
@@ -214,12 +216,105 @@ app.post('/login', (req, res) => {
         user: { 
           id: user.id, 
           username: user.username, 
-          role: user.role 
+          role: user.role,
+          group: user.group || null
         } 
       });
     });
   });
 });
+
+// 刷新token API
+app.post('/refresh-token', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: '未提供token' });
+  }
+  
+  try {
+    // 验证token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
+    
+    // 验证用户是否仍然存在于数据库中
+    const query = 'SELECT * FROM users WHERE id = ? AND username = ?';
+    db.query(query, [decoded.userId, decoded.username], (err, results) => {
+      if (err) {
+        console.error('数据库查询错误:', err);
+        return res.status(500).json({ message: '服务器内部错误' });
+      }
+      
+      if (results.length === 0) {
+        return res.status(401).json({ message: '用户不存在' });
+      }
+      
+      // 生成新token
+      const newToken = jwt.sign(
+        { 
+          userId: decoded.userId, 
+          username: decoded.username, 
+          role: decoded.role,
+          group: decoded.group || null
+        }, 
+        process.env.JWT_SECRET || 'your_jwt_secret_key',
+        { expiresIn: '1h' }
+      );
+      
+      res.json({ token: newToken });
+    });
+  } catch (error) {
+    console.error('token刷新失败:', error);
+    res.status(401).json({ message: 'token无效或已过期' });
+  }
+});
+
+// 测试认证API
+app.get('/test-auth', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: '认证成功',
+    user: {
+      id: req.user.userId,
+      username: req.user.username,
+      role: req.user.role,
+      group: req.user.group || null
+    }
+  });
+});
+
+// 认证中间件
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (token == null) return res.status(401).json({ message: '未提供token' });
+  
+  jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key', (err, decodedUser) => {
+    if (err) return res.status(403).json({ message: 'token无效或已过期' });
+    
+    // 验证用户是否仍然存在于数据库中
+    const query = 'SELECT * FROM users WHERE id = ? AND username = ?';
+    db.query(query, [decodedUser.userId, decodedUser.username], (err, results) => {
+      if (err) {
+        console.error('数据库查询错误:', err);
+        return res.status(500).json({ message: '服务器内部错误' });
+      }
+      
+      if (results.length === 0) {
+        return res.status(401).json({ message: '用户不存在' });
+      }
+      
+      // 添加group信息到decodedUser
+      const user = results[0];
+      req.user = {
+        ...decodedUser,
+        group: user.group || null
+      };
+      next();
+    });
+  });
+};
+
 
 // 启动服务器函数
 function startServer() {

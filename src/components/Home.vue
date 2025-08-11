@@ -5,6 +5,7 @@
     <div class="user-info" v-if="user">
       <p>用户名: {{ user.username }}</p>
       <p>角色: {{ user.role }}</p>
+      <p>用户组: {{ user.group }}</p>
       <p v-if="user.expiresAt">Token过期时间: {{ formatDate(user.expiresAt) }}</p>
     </div>
     <div v-else>
@@ -18,14 +19,34 @@
 </template>
 
 <script setup>
-import { inject, computed } from 'vue'
+import { inject, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import api from '../api.js'
 
 // 注入认证状态
 const authStore = inject('authStore')
 const router = useRouter()
 
-console.log(authStore.user)
+// 挂载时获取用户信息并验证token
+onMounted(() => {
+  console.log('认证状态:', authStore.isAuthenticated.value)
+  console.log('用户信息:', authStore.user.value)
+  console.log('Token:', authStore.token.value)
+
+  // 测试API请求
+  testApiRequest()
+})
+
+// 测试API请求
+async function testApiRequest() {
+  try {
+    // 这里可以替换为实际的API端点
+    const response = await api.get('/test-auth')
+    console.log('API请求成功:', response.data)
+  } catch (error) {
+    console.error('API请求失败:', error)
+  }
+}
 
 // 计算属性获取用户信息
 const user = computed(() => authStore.user.value)
@@ -46,6 +67,7 @@ const logout = () => {
 const forceLogout = () => {
   authStore.forceLogout()
 }
+
 </script>
 
 <style scoped>

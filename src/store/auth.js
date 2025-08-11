@@ -2,9 +2,9 @@
 // 包含用户验证、JWT令牌、过期机制和权限管理
 import { ref, computed } from 'vue'
 import axios from 'axios'
+import { API_BASE_URL } from '../config'
 
 // 后端API基础URL
-const API_BASE_URL = 'http://localhost:3001'
 
 export function createAuthStore() {
   // 从localStorage获取认证状态
@@ -13,20 +13,7 @@ export function createAuthStore() {
   const token = ref(localStorage.getItem('authToken') || null)
   const tokenExpiry = ref(localStorage.getItem('authTokenExpiry') || null)
 
-  // 解析JWT令牌
-  function decodeToken(token) {
-    try {
-      const parts = token.split('.')
-      if (parts.length !== 3) {
-        throw new Error('无效的token格式')
-      }
-
-      const decodedPayload = JSON.parse(atob(parts[1]))
-      return decodedPayload
-    } catch (error) {
-      throw new Error('token解析失败')
-    }
-  }
+  
 
   // 初始化时检查token有效性
   // 注意：这里会从localStorage读取之前保存的token，如果有效则自动登录
@@ -40,7 +27,13 @@ export function createAuthStore() {
         try {
           const decoded = decodeToken(token.value)
           isAuthenticated.value = true
-          user.value = decoded.user
+          // 直接使用解码后的token数据，因为后端返回的token中没有user对象
+      user.value = {
+        id: decoded.userId,
+        username: decoded.username,
+        role: decoded.role,
+        group: decoded.group || null
+      }
         } catch (error) {
           console.error('Token解析失败:', error)
           clearAuthData()
@@ -53,10 +46,10 @@ export function createAuthStore() {
   }
 
   // 注册函数
-  async function register(username, password) {
+  async function register(username, password, group) {
     try {
       // 调用后端注册API
-      const response = await axios.post(`${API_BASE_URL}/register`, { username, password })
+      const response = await axios.post(`${API_BASE_URL}/register`, { username, password, group })
       
       return { success: true, message: response.data.message }
     } catch (error) {
@@ -88,7 +81,10 @@ export function createAuthStore() {
 
       // 更新状态
       isAuthenticated.value = true
-      user.value = userInfo
+      user.value = {
+        ...userInfo,
+        group: userInfo.group || null
+      }
 
       return { success: true, message: '登录成功' }
     } catch (error) {
@@ -121,32 +117,6 @@ export function createAuthStore() {
     // 确保完全清除，防止任何残留数据导致的自动登录
     window.location.reload()
   }
-
-  // 生成模拟JWT令牌
-  function generateToken(userInfo, expiry) {
-    // 简化版JWT生成，实际应用应使用专门的JWT库
-    const header = { alg: 'HS256', typ: 'JWT' }
-    const payload = {
-      sub: userInfo.username,
-      email: userInfo.email,
-      role: userInfo.role,
-      exp: Math.floor(expiry / 1000),
-      user: {
-        username: userInfo.username,
-        email: userInfo.email,
-        role: userInfo.role,
-        permissions: userInfo.permissions
-      }
-    }
-
-    const encodedHeader = btoa(JSON.stringify(header))
-    const encodedPayload = btoa(JSON.stringify(payload))
-    // 简化的签名，实际应用应使用密钥进行HMAC签名
-    const signature = btoa(`${encodedHeader}.${encodedPayload}`)
-
-    return `${encodedHeader}.${encodedPayload}.${signature}`
-  }
-
   // 解析JWT令牌
   function decodeToken(token) {
     try {
@@ -192,12 +162,18 @@ export function createAuthStore() {
         return { success: false, message: 'token未到刷新时间' }
       }
 
-      // 模拟API调用刷新token
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // 调用后端刷新token API
+      const response = await axios.post(`${API_BASE_URL}/refresh-token`, {}, {
+        headers: {
+          Authorization: `Bearer ${token.value}`
+        }
+      })
 
-      // 生成新token
-      const expiry = Date.now() + 3600000 // 1小时过期
-      const newToken = generateToken(user.value, expiry)
+      const { token: newToken } = response.data
+      
+      // 计算过期时间（JWT通常包含exp字段）
+      const decodedToken = decodeToken(newToken)
+      const expiry = decodedToken.exp * 1000 // JWT的exp是秒数，转换为毫秒
 
       // 更新token
       token.value = newToken

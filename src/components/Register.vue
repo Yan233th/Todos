@@ -32,6 +32,15 @@
           placeholder="请确认密码"
         >
       </div>
+      <div class="form-group">
+        <label for="group">用户组</label>
+        <input
+          type="text"
+          id="group"
+          v-model="group"
+          placeholder="请输入用户组（可选）"
+        >
+      </div>
       <div v-if="error" class="error-message">{{ error }}</div>
       <button type="submit" :disabled="loading" @click="handleRegister">
   <span v-if="loading">注册中...</span>
@@ -53,6 +62,7 @@ const router = useRouter()
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const group = ref('')
 const error = ref('')
 const loading = ref(false)
 
@@ -77,7 +87,7 @@ const handleRegister = async () => {
 
   try {
     // 调用注册函数
-    const result = await authStore.register(username.value, password.value)
+    const result = await authStore.register(username.value, password.value, group.value)
 
     if (result.success) {
       // 注册成功，跳转到登录页面
