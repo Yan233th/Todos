@@ -61,27 +61,46 @@ function initializeDatabase() {
         }
         console.log('成功连接到MySQL数据库');
         
-        // 创建用户表
-        const createTableQuery = `
-          CREATE TABLE IF NOT EXISTS users (
+        // 创建用户组表
+        const createGroupsTableQuery = `
+          CREATE TABLE IF NOT EXISTS \`groups\` (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            role VARCHAR(20) DEFAULT 'user',
-            \`group\` VARCHAR(50) DEFAULT NULL,
+            name VARCHAR(50) UNIQUE NOT NULL,
+            description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `;
         
-        db.query(createTableQuery, (err) => {
+        db.query(createGroupsTableQuery, (err) => {
           if (err) {
-            console.error('创建用户表失败:', err);
+            console.error('创建用户组表失败:', err);
             return;
           }
-          console.log('用户表已创建或已存在');
+          console.log('用户组表已创建或已存在');
           
-          // 初始化默认用户
-          initializeDefaultUsers(db);
+          // 创建用户表
+          const createTableQuery = `
+            CREATE TABLE IF NOT EXISTS users (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              username VARCHAR(50) UNIQUE NOT NULL,
+              password VARCHAR(255) NOT NULL,
+              role VARCHAR(20) DEFAULT 'user',
+              group_id INT DEFAULT NULL,
+              FOREIGN KEY (group_id) REFERENCES \`groups\`(id) ON DELETE SET NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `;
+        
+          db.query(createTableQuery, (err) => {
+            if (err) {
+              console.error('创建用户表失败:', err);
+              return;
+            }
+            console.log('用户表已创建或已存在');
+            
+            // 初始化默认用户
+            initializeDefaultUsers(db);
+          });
         });
       });
     });
@@ -93,42 +112,13 @@ initializeDatabase();
 
 // 初始化默认用户
 function initializeDefaultUsers(db) {
-  const adminPassword = bcrypt.hashSync('admin123', 10);
-  const userPassword = bcrypt.hashSync('user123', 10);
-  
-  const defaultUsers = [
-    { username: 'admin', password: adminPassword, role: 'admin', group: null },
-    { username: 'user', password: userPassword, role: 'user', group: null }
-  ];
-  
-  defaultUsers.forEach(user => {
-    const checkQuery = 'SELECT * FROM users WHERE username = ?';
-    db.query(checkQuery, [user.username], (err, results) => {
-      if (err) {
-        console.error('检查用户失败:', err);
-        return;
-      }
-      
-      if (results.length === 0) {
-        const insertQuery = 'INSERT INTO users SET ?';
-        db.query(insertQuery, user, (err) => {
-          if (err) {
-            console.error('插入默认用户失败:', err);
-            return;
-          }
-          console.log(`默认用户 '${user.username}' 已创建`);
-        });
-      }
-    });
-  });
-
   // 数据库初始化完成后启动服务器
   startServer();
 }
 
 // 注册API
 app.post('/register', (req, res) => {
-  const { username, password, role, group } = req.body;
+  const { username, password, role, groupId } = req.body;
   
   if (!username || !password) {
     return res.status(400).json({ message: '用户名和密码是必需的' });
@@ -146,22 +136,55 @@ app.post('/register', (req, res) => {
       return res.status(400).json({ message: '用户名已存在' });
     }
     
-    // 密码哈希
-    const hashedPassword = bcrypt.hashSync(password, 10);
-    
-    // 设置默认角色
-    const userRole = role || 'user';
-    
-    // 插入新用户
-    const insertQuery = 'INSERT INTO users (username, password, role, `group`) VALUES (?, ?, ?, ?)';
-    db.query(insertQuery, [username, hashedPassword, userRole, group || null], (err, results) => {
-      if (err) {
-        console.error('插入用户失败:', err);
-        return res.status(500).json({ message: '服务器内部错误' });
-      }
+    // 检查用户组是否存在（如果提供了groupId）
+    if (groupId) {
+      const checkGroupQuery = 'SELECT * FROM `groups` WHERE id = ?';
+      db.query(checkGroupQuery, [groupId], (err, groupResults) => {
+        if (err) {
+          console.error('数据库查询错误:', err);
+          return res.status(500).json({ message: '服务器内部错误' });
+        }
+        
+        if (groupResults.length === 0) {
+          return res.status(400).json({ message: '指定的用户组不存在' });
+        }
+        
+        // 密码哈希
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        
+        // 设置默认角色
+        const userRole = role || 'user';
+        
+        // 插入新用户
+        const insertQuery = 'INSERT INTO users (username, password, role, group_id) VALUES (?, ?, ?, ?)';
+        db.query(insertQuery, [username, hashedPassword, userRole, groupId], (err, results) => {
+          if (err) {
+            console.error('插入用户失败:', err);
+            return res.status(500).json({ message: '服务器内部错误' });
+          }
+          
+          res.status(201).json({ message: '注册成功' });
+        });
+      });
+    } else {
+      // 没有提供groupId，直接插入用户
+      // 密码哈希
+      const hashedPassword = bcrypt.hashSync(password, 10);
       
-      res.status(201).json({ message: '注册成功' });
-    });
+      // 设置默认角色
+      const userRole = role || 'user';
+      
+      // 插入新用户
+      const insertQuery = 'INSERT INTO users (username, password, role, group_id) VALUES (?, ?, ?, ?)';
+      db.query(insertQuery, [username, hashedPassword, userRole, null], (err, results) => {
+        if (err) {
+          console.error('插入用户失败:', err);
+          return res.status(500).json({ message: '服务器内部错误' });
+        }
+        
+        res.status(201).json({ message: '注册成功' });
+      });
+    }
   });
 });
 
@@ -204,7 +227,7 @@ app.post('/login', (req, res) => {
           userId: user.id, 
           username: user.username, 
           role: user.role,
-          group: user.group || null
+          groupId: user.group_id || null
         }, 
         process.env.JWT_SECRET || 'your_jwt_secret_key',
         { expiresIn: '1h' }
@@ -217,7 +240,7 @@ app.post('/login', (req, res) => {
           id: user.id, 
           username: user.username, 
           role: user.role,
-          group: user.group || null
+          groupId: user.group_id || null
         } 
       });
     });
@@ -254,7 +277,7 @@ app.post('/refresh-token', (req, res) => {
           userId: decoded.userId, 
           username: decoded.username, 
           role: decoded.role,
-          group: decoded.group || null
+          groupId: decoded.groupId || null
         }, 
         process.env.JWT_SECRET || 'your_jwt_secret_key',
         { expiresIn: '1h' }
@@ -268,17 +291,35 @@ app.post('/refresh-token', (req, res) => {
   }
 });
 
-// 测试认证API
-app.get('/test-auth', authenticateToken, (req, res) => {
-  res.json({
-    success: true,
-    message: '认证成功',
-    user: {
-      id: req.user.userId,
-      username: req.user.username,
-      role: req.user.role,
-      group: req.user.group || null
+// 获取所有用户组API
+app.get('/groups', authenticateToken, (req, res) => {
+  const query = 'SELECT * FROM `groups`';
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('数据库查询错误:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
     }
+    
+    res.json({ groups: results });
+  });
+});
+
+// 根据ID获取单个用户组API
+app.get('/groups/:id', authenticateToken, (req, res) => {
+  const groupId = req.params.id;
+  const query = 'SELECT * FROM \`groups\` WHERE id = ?';
+  
+  db.query(query, [groupId], (err, results) => {
+    if (err) {
+      console.error('数据库查询错误:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: '用户组不存在' });
+    }
+    
+    res.json({ group: results[0] });
   });
 });
 
@@ -304,11 +345,13 @@ function authenticateToken(req, res, next) {
         return res.status(401).json({ message: '用户不存在' });
       }
       
-      // 添加group信息到decodedUser
+      // 添加groupId信息到decodedUser
       const user = results[0];
       req.user = {
-        ...decodedUser,
-        group: user.group || null
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        groupId: user.group_id || null
       };
       next();
     });

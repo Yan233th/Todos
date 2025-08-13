@@ -5,6 +5,7 @@ import Login from './components/Login.vue'
 import Register from './components/Register.vue'
 import Home from './components/Home.vue'
 import { createAuthStore } from './store/auth'
+import "./main.css"
 
 // 路由配置
 const routes = [

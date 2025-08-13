@@ -1,55 +1,82 @@
 <template>
-  <div class="home-container">
-    <h1>ToDos</h1>
-    <p>您已成功登录!</p>
-    <div class="user-info" v-if="user">
-      <p>用户名: {{ user.username }}</p>
-      <p>角色: {{ user.role }}</p>
-      <p>用户组: {{ user.group }}</p>
-      <p v-if="user.expiresAt">Token过期时间: {{ formatDate(user.expiresAt) }}</p>
-    </div>
-    <div v-else>
-      <p>加载用户信息中...</p>
-    </div>
-    <div class="button-group">
-      <button @click="logout">退出登录</button>
-      <button @click="forceLogout" class="force-logout">清除所有登录数据</button>
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div class="bg-gradient-to-r from-indigo-500 to-purple-600 p-6 text-center">
+        <h1 class="text-3xl font-bold text-white">ToDos</h1>
+        <p class="text-indigo-200 mt-2">您已成功登录!</p>
+      </div>
+      
+      <div class="p-6">
+        <div class="user-info bg-gray-50 rounded-lg p-4 mb-6" v-if="user">
+          <h2 class="text-xl font-semibold text-gray-800 mb-3">用户信息</h2>
+          <div class="space-y-2">
+            <p class="flex justify-between">
+              <span class="text-gray-600">用户名:</span>
+              <span class="font-medium">{{ user.username }}</span>
+            </p>
+            <p class="flex justify-between">
+              <span class="text-gray-600">角色:</span>
+              <span class="font-medium">{{ user.role }}</span>
+            </p>
+            <p class="flex justify-between">
+              <span class="text-gray-600">用户组:</span>
+              <span class="font-medium">{{ groupName || '无' }}</span>
+            </p>
+            <p class="flex justify-between" v-if="user.expiresAt">
+              <span class="text-gray-600">Token过期时间:</span>
+              <span class="font-medium">{{ formatDate(user.expiresAt) }}</span>
+            </p>
+          </div>
+        </div>
+        <div v-else class="text-center py-8">
+          <p class="text-gray-500">加载用户信息中...</p>
+        </div>
+        
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          <button 
+            @click="logout" 
+            class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-300 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
+          >
+            退出登录
+          </button>
+          <button 
+            @click="forceLogout" 
+            class="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition duration-300 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+          >
+            清除所有登录数据
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { inject, computed, onMounted } from 'vue'
+import { inject, computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { API_BASE_URL } from '../config'
 import api from '../api.js'
+import axios from 'axios'
 
 // 注入认证状态
 const authStore = inject('authStore')
 const router = useRouter()
 
 // 挂载时获取用户信息并验证token
-onMounted(() => {
+onMounted(async () => {
   console.log('认证状态:', authStore.isAuthenticated.value)
   console.log('用户信息:', authStore.user.value)
   console.log('Token:', authStore.token.value)
-
-  // 测试API请求
-  testApiRequest()
+  
+  // 获取用户组名称
+  await authStore.fetchGroupName()
 })
-
-// 测试API请求
-async function testApiRequest() {
-  try {
-    // 这里可以替换为实际的API端点
-    const response = await api.get('/test-auth')
-    console.log('API请求成功:', response.data)
-  } catch (error) {
-    console.error('API请求失败:', error)
-  }
-}
 
 // 计算属性获取用户信息
 const user = computed(() => authStore.user.value)
+
+// 用户组名称
+const groupName = computed(() => authStore.groupName.value)
 
 // 格式化日期
 const formatDate = (timestamp) => {
@@ -71,50 +98,5 @@ const forceLogout = () => {
 </script>
 
 <style scoped>
-.home-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-  text-align: center;
-}
-
-.user-info {
-  margin: 20px 0;
-  padding: 15px;
-  background-color: #f5f5f5;
-  border-radius: 8px;
-  text-align: left;
-}
-
-.button-group {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-h1 {
-  color: #333;
-}
-
-button {
-  padding: 8px 16px;
-  background-color: #42b983;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #3aa876;
-}
-
-.force-logout {
-  background-color: #e74c3c;
-}
-
-.force-logout:hover {
-  background-color: #c0392b;
-}
+/* 所有样式已移至Tailwind CSS类中 */
 </style>
