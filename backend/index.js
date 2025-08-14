@@ -292,6 +292,7 @@ app.post('/login', (req, res) => {
           name: user.name,
           role: user.role,
           groupId: user.group_id || null
+          groupId: user.group_id || null
         } 
       });
     });
@@ -345,6 +346,35 @@ app.post('/refresh-token', (req, res) => {
   }
 });
 
+// 获取所有用户组API
+app.get('/groups', authenticateToken, (req, res) => {
+  const query = 'SELECT * FROM `groups`';
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('数据库查询错误:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    res.json({ groups: results });
+  });
+});
+
+// 根据ID获取单个用户组API
+app.get('/groups/:id', authenticateToken, (req, res) => {
+  const groupId = req.params.id;
+  const query = 'SELECT * FROM \`groups\` WHERE id = ?';
+  
+  db.query(query, [groupId], (err, results) => {
+    if (err) {
+      console.error('数据库查询错误:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: '用户组不存在' });
+    }
+    
+    res.json({ group: results[0] });
 // 获取所有用户组API
 app.get('/groups', authenticateToken, (req, res) => {
   const query = 'SELECT * FROM `groups`';
