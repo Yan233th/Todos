@@ -1,35 +1,62 @@
 <template>
-  <div class="login-container">
-    <h2>登录</h2>
-    <form @submit.prevent="handleLogin">
-      <div class="form-group">
-        <label for="username">用户名</label>
-        <input
-          type="text"
-          id="username"
-          v-model="username"
-          required
-          placeholder="请输入用户名"
-        >
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div class="bg-gradient-to-r from-indigo-500 to-purple-600 p-8 text-center">
+        <h2 class="text-3xl font-bold text-white">登录</h2>
       </div>
-      <div class="form-group">
-        <label for="password">密码</label>
-        <input
-          type="password"
-          id="password"
-          v-model="password"
-          required
-          placeholder="请输入密码"
+      
+      <form @submit.prevent="handleLogin" class="p-8">
+        <div class="mb-6">
+          <label for="username" class="block text-gray-700 text-sm font-bold mb-2">用户名</label>
+          <input
+            type="text"
+            id="username"
+            v-model="username"
+            required
+            placeholder="请输入用户名"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          >
+        </div>
+        
+        <div class="mb-6">
+          <label for="password" class="block text-gray-700 text-sm font-bold mb-2">密码</label>
+          <input
+            type="password"
+            id="password"
+            v-model="password"
+            required
+            placeholder="请输入密码"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          >
+        </div>
+        
+        <div v-if="error" class="mb-6 p-3 bg-red-100 text-red-700 rounded-lg text-center">{{ error }}</div>
+        
+        <button 
+          type="submit" 
+          :disabled="loading" 
+          @click="handleLogin"
+          class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          <span v-if="loading" class="flex items-center justify-center">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            登录中...
+          </span>
+          <span v-else>登录</span>
+        </button>
+      </form>
+      
+      <div class="px-8 pb-8 text-center">
+        <p class="text-gray-600">
+          还没有账号？
+          <router-link to="/register" class="text-indigo-600 hover:text-indigo-800 font-medium transition duration-300">
+            立即注册
+          </router-link>
+        </p>
       </div>
-      <div v-if="error" class="error-message">{{ error }}</div>
-      <button type="submit" :disabled="loading" @click="handleLogin">
-  <span v-if="loading">登录中...</span>
-  <span v-else>登录</span>
-</button>
-    </form>
-    <div class="register-link">
-      还没有账号？<router-link to="/register">立即注册</router-link>
     </div>
   </div>
 </template>
@@ -91,69 +118,5 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-.login-container {
-  max-width: 400px;
-  margin: 50px auto;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-h2 {
-  text-align: center;
-  color: #333;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-}
-
-input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  box-sizing: border-box;
-}
-
-button {
-  width: 100%;
-  padding: 10px;
-  background-color: #42b983;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #3aa876;
-}
-
-.error-message {
-  color: #f44336;
-  margin-bottom: 15px;
-  text-align: center;
-}
-
-.register-link {
-  margin-top: 15px;
-  text-align: center;
-}
-
-.register-link a {
-  color: #4CAF50;
-  text-decoration: none;
-}
-
-.register-link a:hover {
-  text-decoration: underline;
-}
+/* 所有样式已移至Tailwind CSS类中 */
 </style>

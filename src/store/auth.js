@@ -4,14 +4,13 @@ import { ref, computed } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../config'
 
-// 后端API基础URL
-
 export function createAuthStore() {
   // 从localStorage获取认证状态
   const isAuthenticated = ref(false)
   const user = ref(null)
   const token = ref(localStorage.getItem('authToken') || null)
   const tokenExpiry = ref(localStorage.getItem('authTokenExpiry') || null)
+  const groupName = ref('')
 
   
 
@@ -31,8 +30,9 @@ export function createAuthStore() {
       user.value = {
         id: decoded.userId,
         username: decoded.username,
+        name: decoded.name,
         role: decoded.role,
-        group: decoded.group || null
+        groupId: decoded.groupId || null
       }
         } catch (error) {
           console.error('Token解析失败:', error)
@@ -46,10 +46,10 @@ export function createAuthStore() {
   }
 
   // 注册函数
-  async function register(username, password, group) {
+  async function register(username, name, password, group) {
     try {
       // 调用后端注册API
-      const response = await axios.post(`${API_BASE_URL}/register`, { username, password, group })
+      const response = await axios.post(`${API_BASE_URL}/register`, { username, name, password, group })
       
       return { success: true, message: response.data.message }
     } catch (error) {
@@ -83,7 +83,7 @@ export function createAuthStore() {
       isAuthenticated.value = true
       user.value = {
         ...userInfo,
-        group: userInfo.group || null
+        groupId: userInfo.groupId || null
       }
 
       return { success: true, message: '登录成功' }
@@ -125,10 +125,18 @@ export function createAuthStore() {
         throw new Error('无效的token格式')
       }
 
-      const decodedPayload = JSON.parse(atob(parts[1]))
-      return decodedPayload
+      // 使用TextDecoder处理可能的中文字符
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      
+      const decodedPayload = JSON.parse(jsonPayload);
+      return decodedPayload;
     } catch (error) {
-      throw new Error('token解析失败')
+      console.error('Token解析错误:', error);
+      throw new Error('token解析失败');
     }
   }
 
@@ -189,16 +197,41 @@ export function createAuthStore() {
     }
   }
 
+  // 获取用户组名称
+  async function fetchGroupName() {
+    // 确保用户信息已完全加载
+    if (user.value && user.value.groupId) {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/groups/${user.value.groupId}`, {
+          headers: {
+            Authorization: `Bearer ${token.value}`
+          }
+        });
+        groupName.value = response.data.group.name;
+        return { success: true, groupName: response.data.group.name };
+      } catch (err) {
+        console.error('获取用户组信息错误:', err);
+        // 如果是401错误，将在调用处处理token刷新逻辑
+        return { success: false, message: '获取用户组信息失败' };
+      }
+    } else {
+      console.log('用户信息未完全加载，无法获取用户组名称');
+      return { success: false, message: '用户信息未完全加载' };
+    }
+  };
+
   return {
     isAuthenticated,
     user,
     token,
+    groupName, // 暴露groupName
     login,
     register,
     logout,
     forceLogout,
     hasPermission,
     hasRole,
-    refreshToken
+    refreshToken,
+    fetchGroupName // 暴露fetchGroupName方法
   }
 }
