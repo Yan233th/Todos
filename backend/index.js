@@ -292,7 +292,6 @@ app.post('/login', (req, res) => {
           name: user.name,
           role: user.role,
           groupId: user.group_id || null
-          groupId: user.group_id || null
         } 
       });
     });
@@ -375,6 +374,9 @@ app.get('/groups/:id', authenticateToken, (req, res) => {
     }
     
     res.json({ group: results[0] });
+  });
+});
+
 // 获取所有用户组API
 app.get('/groups', authenticateToken, (req, res) => {
   const query = 'SELECT * FROM `groups`';
