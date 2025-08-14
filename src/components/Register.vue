@@ -78,7 +78,6 @@
 
 <script setup>
 import { ref, inject, onMounted } from 'vue'
-import { ref, inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 // 注入认证状态
@@ -90,7 +89,6 @@ const username = ref('')
 const name = ref('')
 const password = ref('')
 const confirmPassword = ref('')
-const groupId = ref('')
 const groupId = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -146,7 +144,3 @@ const handleRegister = async () => {
   }
 }
 </script>
-
-<style scoped>
-/* 所有样式已移至Tailwind CSS类中 */
-</style>
