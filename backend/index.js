@@ -409,6 +409,251 @@ app.get('/groups/:id', authenticateToken, (req, res) => {
   });
 });
 
+// 更新用户组API
+app.put('/groups/:id', authenticateToken, (req, res) => {
+  // 检查当前用户是否为管理员
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
+  }
+  
+  const { id } = req.params;
+  const { name, description } = req.body;
+  
+  // 构建更新查询
+  let updateQuery = 'UPDATE `groups` SET ';
+  const updateFields = [];
+  const updateValues = [];
+  
+  if (name !== undefined) {
+    updateFields.push('name = ?');
+    updateValues.push(name);
+  }
+  if (description !== undefined) {
+    updateFields.push('description = ?');
+    updateValues.push(description);
+  }
+  
+  // 如果没有提供任何更新字段
+  if (updateFields.length === 0) {
+    return res.status(400).json({ message: '至少需要提供一个要更新的字段' });
+  }
+  
+  updateQuery += updateFields.join(', ') + ' WHERE id = ?';
+  updateValues.push(id);
+  
+  db.query(updateQuery, updateValues, (err, results) => {
+    if (err) {
+      console.error('更新用户组失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: '未找到指定的用户组' });
+    }
+    
+    res.json({ message: '用户组更新成功' });
+  });
+});
+
+// 删除用户组API
+app.delete('/groups/:id', authenticateToken, (req, res) => {
+  // 检查当前用户是否为管理员
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
+  }
+  
+  const { id } = req.params;
+  
+  const query = 'DELETE FROM `groups` WHERE id = ?';
+  
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      console.error('删除用户组失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: '未找到指定的用户组' });
+    }
+    
+    // 同时更新属于该用户组的用户的group_id为NULL
+    const updateUserQuery = 'UPDATE users SET group_id = NULL WHERE group_id = ?';
+    db.query(updateUserQuery, [id], (updateErr) => {
+      if (updateErr) {
+        console.error('更新用户group_id失败:', updateErr);
+      }
+      // 不管更新用户是否成功，都返回删除成功
+      res.json({ message: '用户组删除成功' });
+    });
+  });
+});
+
+// 创建用户组API
+app.post('/groups', authenticateToken, (req, res) => {
+  // 检查当前用户是否为管理员
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
+  }
+  
+  const { name, description } = req.body;
+  
+  // 验证必填字段
+  if (!name) {
+    return res.status(400).json({ message: '用户组名称是必填项' });
+  }
+  
+  // 插入新用户组
+  const query = 'INSERT INTO `groups` (name, description) VALUES (?, ?)';
+  db.query(query, [name, description || ''], (err, results) => {
+    if (err) {
+      console.error('创建用户组失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    res.status(201).json({ message: '用户组创建成功', groupId: results.insertId });
+  });
+});
+
+// 获取所有用户API
+app.get('/users', authenticateToken, (req, res) => {
+  const query = `
+    SELECT 
+      u.id, 
+      u.username, 
+      u.name, 
+      u.role, 
+      u.group_id,
+      g.name AS group_name
+    FROM users u
+    LEFT JOIN \`groups\` g ON u.group_id = g.id
+  `;
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('数据库查询错误:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    res.json({ users: results });
+  });
+});
+
+// 更新用户API
+app.put('/users/:id', authenticateToken, (req, res) => {
+  // 检查当前用户是否为管理员
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
+  }
+  
+  const { id } = req.params;
+  const { username, name, role, groupId } = req.body;
+  
+  // 构建更新查询
+  let updateQuery = 'UPDATE users SET ';
+  const updateFields = [];
+  const updateValues = [];
+  
+  if (username !== undefined) {
+    updateFields.push('username = ?');
+    updateValues.push(username);
+  }
+  if (name !== undefined) {
+    updateFields.push('name = ?');
+    updateValues.push(name);
+  }
+  if (role !== undefined) {
+    // 验证角色值
+    if (role !== 'user' && role !== 'admin') {
+      return res.status(400).json({ message: '角色值无效，必须是user或admin' });
+    }
+    updateFields.push('role = ?');
+    updateValues.push(role);
+  }
+  if (groupId !== undefined) {
+    updateFields.push('group_id = ?');
+    updateValues.push(groupId);
+  }
+  
+  // 如果没有提供任何更新字段
+  if (updateFields.length === 0) {
+    return res.status(400).json({ message: '至少需要提供一个要更新的字段' });
+  }
+  
+  updateQuery += updateFields.join(', ') + ' WHERE id = ?';
+  updateValues.push(id);
+  
+  db.query(updateQuery, updateValues, (err, results) => {
+    if (err) {
+      console.error('更新用户失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: '未找到指定的用户' });
+    }
+    
+    res.json({ message: '用户更新成功' });
+  });
+});
+
+// 删除用户API
+app.delete('/users/:id', authenticateToken, (req, res) => {
+  // 检查当前用户是否为管理员
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
+  }
+  
+  const { id } = req.params;
+  
+  // 防止用户删除自己
+  if (parseInt(id) === req.user.userId) {
+    return res.status(400).json({ message: '不能删除当前登录的用户' });
+  }
+  
+  // 从所有关联的任务中移除该用户
+  const removeFromTodosQuery = `UPDATE TodosList SET Belonging_users = 
+    CASE 
+      WHEN Belonging_users IS NULL OR Belonging_users = '' THEN ''
+      WHEN Belonging_users = ? THEN ''
+      WHEN Belonging_users LIKE ? THEN REPLACE(Belonging_users, ?, '')
+      WHEN Belonging_users LIKE ? THEN REPLACE(Belonging_users, ?, ?)
+      WHEN Belonging_users LIKE ? THEN REPLACE(Belonging_users, ?, ?)
+      ELSE Belonging_users
+    END`;
+  
+  const userIdStr = id.toString();
+  const userIdWithComma = userIdStr + ',';
+  const commaUserId = ',' + userIdStr;
+  const commaUserIdWithComma = ',' + userIdStr + ',';
+  
+  db.query(removeFromTodosQuery, [
+    userIdStr, 
+    userIdWithComma + '%', userIdWithComma, '',
+    '%' + commaUserIdWithComma + '%', commaUserIdWithComma, ',',
+    '%' + commaUserId, commaUserId, ''
+  ], (err) => {
+    if (err) {
+      console.error('从任务中移除用户失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    // 删除用户
+    const query = 'DELETE FROM users WHERE id = ?';
+    
+    db.query(query, [id], (err, results) => {
+      if (err) {
+        console.error('删除用户失败:', err);
+        return res.status(500).json({ message: '服务器内部错误' });
+      }
+      
+      if (results.affectedRows === 0) {
+        return res.status(404).json({ message: '未找到指定的用户' });
+      }
+      
+      res.json({ message: '用户删除成功' });
+    });
+  });
+});
+
 // 认证中间件
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -451,7 +696,7 @@ function authenticateToken(req, res, next) {
 
 // 创建待办事项API
 app.post('/todos', authenticateToken, (req, res) => {
-  const { name, description, Deadline, Priority, Belonging_users, Belonging_groups } = req.body;
+  const { name, description, deadline, Priority, Belonging_users, Belonging_groups } = req.body;
   
   // 验证必要字段
   if (!name) {
@@ -459,14 +704,31 @@ app.post('/todos', authenticateToken, (req, res) => {
   }
   
   // 设置默认值
-  const priority = Priority || 0;
-  const status = -1; // 默认状态为"计划中"
+  // 确保优先级和状态值被正确处理
+  // 将前端传来的字符串优先级映射为数据库中的整数值
+  const priorityMap = {
+    '紧急': 3,
+    '重要': 2,
+    '普通': 1,
+    '低': 0
+  };
+  const priority = Priority !== undefined ? (priorityMap[Priority] !== undefined ? priorityMap[Priority] : 0) : 0;
+  const Status = req.body.Status !== undefined ? req.body.Status : -1; // 默认状态为"计划中"
   
   // 处理Belonging_users和Belonging_groups为ID列表
   const belongingUsers = Array.isArray(Belonging_users) ? Belonging_users.join(',') : 
                         (typeof Belonging_users === 'string' ? Belonging_users : '');
   const belongingGroups = Array.isArray(Belonging_groups) ? Belonging_groups.join(',') : 
                          (typeof Belonging_groups === 'string' ? Belonging_groups : '');
+  
+  // 处理Deadline字段，确保格式正确
+  let formattedDeadline = deadline;
+  if (deadline) {
+    // 如果只提供了日期，添加默认时间
+    if (deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      formattedDeadline = deadline + ' 00:00:00';
+    }
+  }
   
   // 插入新待办事项
   const insertQuery = `
@@ -475,7 +737,7 @@ app.post('/todos', authenticateToken, (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(insertQuery, [name, description, Deadline, priority, status, belongingUsers, belongingGroups], (err, results) => {
+  db.query(insertQuery, [name, description, formattedDeadline, priority, Status, belongingUsers, belongingGroups], (err, results) => {
     if (err) {
       console.error('创建待办事项失败:', err);
       return res.status(500).json({ message: '服务器内部错误' });
@@ -500,6 +762,18 @@ app.get('/todos', authenticateToken, (req, res) => {
     // 处理Belonging_users和Belonging_groups字段，将逗号分隔的字符串转换为数组
     const todos = results.map(todo => ({
       ...todo,
+      // 确保状态和优先级值被正确处理
+      Status: Number(todo.Status),
+      // 将数据库中的整数优先级映射为前端需要的字符串值
+      Priority: (() => {
+        const priorityMap = {
+          3: '紧急',
+          2: '重要',
+          1: '普通',
+          0: '低'
+        };
+        return priorityMap[todo.Priority] || '普通';
+      })(),
       Belonging_users: todo.Belonging_users ? todo.Belonging_users.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
       Belonging_groups: todo.Belonging_groups ? todo.Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : []
     }));
@@ -526,6 +800,18 @@ app.get('/todos/:id', authenticateToken, (req, res) => {
     // 处理Belonging_users和Belonging_groups字段，将逗号分隔的字符串转换为数组
     const todo = {
       ...results[0],
+      // 确保状态和优先级值被正确处理
+      Status: Number(results[0].Status),
+      // 将数据库中的整数优先级映射为前端需要的字符串值
+      Priority: (() => {
+        const priorityMap = {
+          3: '紧急',
+          2: '重要',
+          1: '普通',
+          0: '低'
+        };
+        return priorityMap[results[0].Priority] || '普通';
+      })(),
       Belonging_users: results[0].Belonging_users ? results[0].Belonging_users.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
       Belonging_groups: results[0].Belonging_groups ? results[0].Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : []
     };
@@ -537,7 +823,7 @@ app.get('/todos/:id', authenticateToken, (req, res) => {
 // 更新待办事项API
 app.put('/todos/:id', authenticateToken, (req, res) => {
   const { id } = req.params;
-  const { name, description, Deadline, Priority, Status, Belonging_users, Belonging_groups } = req.body;
+  const { name, description, deadline, Priority, Status, Belonging_users, Belonging_groups } = req.body;
   
   // 构建更新查询
   let updateQuery = 'UPDATE TodosList SET ';
@@ -552,29 +838,47 @@ app.put('/todos/:id', authenticateToken, (req, res) => {
     updateFields.push('description = ?');
     updateValues.push(description);
   }
-  if (Deadline !== undefined) {
+  if (deadline !== undefined) {
     updateFields.push('Deadline = ?');
-    updateValues.push(Deadline);
+    // 处理Deadline字段，确保格式正确
+    let formattedDeadline = deadline;
+    if (deadline) {
+      // 如果只提供了日期，添加默认时间
+      if (deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        formattedDeadline = deadline + ' 00:00:00';
+      }
+    }
+    updateValues.push(formattedDeadline);
   }
   if (Priority !== undefined) {
     updateFields.push('Priority = ?');
-    updateValues.push(Priority);
+    // 确保优先级值被正确处理
+    // 将前端传来的字符串优先级映射为数据库中的整数值
+    const priorityMap = {
+      '紧急': 3,
+      '重要': 2,
+      '普通': 1,
+      '低': 0
+    };
+    const priorityValue = priorityMap[Priority] !== undefined ? priorityMap[Priority] : 0;
+    updateValues.push(priorityValue);
   }
   if (Status !== undefined) {
     updateFields.push('Status = ?');
+    // 确保状态值被正确处理
     updateValues.push(Status);
   }
   if (Belonging_users !== undefined) {
     // 处理Belonging_users为ID列表
     const belongingUsers = Array.isArray(Belonging_users) ? Belonging_users.join(',') : 
-                          (typeof Belonging_users === 'string' ? Belonging_users : '');
+                          (typeof Belonging_users === 'string' ? Belonging_users : '') || '';
     updateFields.push('Belonging_users = ?');
     updateValues.push(belongingUsers);
   }
   if (Belonging_groups !== undefined) {
     // 处理Belonging_groups为ID列表
     const belongingGroups = Array.isArray(Belonging_groups) ? Belonging_groups.join(',') : 
-                           (typeof Belonging_groups === 'string' ? Belonging_groups : '');
+                           (typeof Belonging_groups === 'string' ? Belonging_groups : '') || '';
     updateFields.push('Belonging_groups = ?');
     updateValues.push(belongingGroups);
   }
