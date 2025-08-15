@@ -63,6 +63,7 @@ function initializeDatabase() {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(50) UNIQUE NOT NULL,
             description TEXT,
+            leaders TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `;
@@ -310,7 +311,7 @@ app.post('/refresh-token', (req, res) => {
     // 验证token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
     
-    // 验证用户是否仍然存在于数据库中
+    // 验证用户是否仍然存在于数据库中，并获取最新的用户信息
     const query = 'SELECT * FROM users WHERE id = ? AND username = ?';
     db.query(query, [decoded.userId, decoded.username], (err, results) => {
       if (err) {
@@ -322,13 +323,15 @@ app.post('/refresh-token', (req, res) => {
         return res.status(401).json({ message: '用户不存在' });
       }
       
+      const user = results[0];
+      
       // 确保用户信息中的中文字符正确编码
       const userInfo = {
-        userId: decoded.userId,
-        username: decoded.username,
-        name: decoded.name,
-        role: decoded.role,
-        groupId: decoded.groupId || null
+        userId: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        groupId: user.group_id || null
       };
       
       // 生成新token
@@ -347,21 +350,27 @@ app.post('/refresh-token', (req, res) => {
 
 // 获取所有用户组API
 app.get('/groups', authenticateToken, (req, res) => {
-  const query = 'SELECT * FROM `groups`';
+  const query = 'SELECT id, name, description, leaders FROM `groups`';
   db.query(query, (err, results) => {
     if (err) {
       console.error('数据库查询错误:', err);
       return res.status(500).json({ message: '服务器内部错误' });
     }
     
-    res.json({ groups: results });
+    // 解析leaders字段
+    const groupsWithLeaders = results.map(group => ({
+      ...group,
+      leaders: group.leaders ? JSON.parse(group.leaders) : []
+    }));
+    
+    res.json({ groups: groupsWithLeaders });
   });
 });
 
 // 根据ID获取单个用户组API
 app.get('/groups/:id', authenticateToken, (req, res) => {
   const groupId = req.params.id;
-  const query = 'SELECT * FROM \`groups\` WHERE id = ?';
+  const query = 'SELECT id, name, description, leaders FROM \`groups\` WHERE id = ?';
   
   db.query(query, [groupId], (err, results) => {
     if (err) {
@@ -373,7 +382,13 @@ app.get('/groups/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ message: '用户组不存在' });
     }
     
-    res.json({ group: results[0] });
+    // 解析leaders字段
+    const groupWithLeaders = {
+      ...results[0],
+      leaders: results[0].leaders ? JSON.parse(results[0].leaders) : []
+    };
+    
+    res.json({ group: groupWithLeaders });
   });
 });
 
@@ -417,7 +432,7 @@ app.put('/groups/:id', authenticateToken, (req, res) => {
   }
   
   const { id } = req.params;
-  const { name, description } = req.body;
+  const { name, description, leaders } = req.body;
   
   // 构建更新查询
   let updateQuery = 'UPDATE `groups` SET ';
@@ -431,6 +446,10 @@ app.put('/groups/:id', authenticateToken, (req, res) => {
   if (description !== undefined) {
     updateFields.push('description = ?');
     updateValues.push(description);
+  }
+  if (leaders !== undefined) {
+    updateFields.push('leaders = ?');
+    updateValues.push(JSON.stringify(leaders));
   }
   
   // 如果没有提供任何更新字段
@@ -495,7 +514,7 @@ app.post('/groups', authenticateToken, (req, res) => {
     return res.status(403).json({ message: '权限不足，只有管理员可以执行此操作' });
   }
   
-  const { name, description } = req.body;
+  const { name, description, leaders } = req.body;
   
   // 验证必填字段
   if (!name) {
@@ -503,8 +522,8 @@ app.post('/groups', authenticateToken, (req, res) => {
   }
   
   // 插入新用户组
-  const query = 'INSERT INTO `groups` (name, description) VALUES (?, ?)';
-  db.query(query, [name, description || ''], (err, results) => {
+  const query = 'INSERT INTO `groups` (name, description, leaders) VALUES (?, ?, ?)';
+  db.query(query, [name, description || '', leaders ? JSON.stringify(leaders) : '[]'], (err, results) => {
     if (err) {
       console.error('创建用户组失败:', err);
       return res.status(500).json({ message: '服务器内部错误' });

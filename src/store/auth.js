@@ -188,6 +188,12 @@ export function createAuthStore() {
       tokenExpiry.value = expiry.toString()
       localStorage.setItem('authToken', newToken)
       localStorage.setItem('authTokenExpiry', expiry.toString())
+      
+      // 更新用户信息
+      user.value = {
+        ...user.value,
+        groupId: decodedToken.groupId || null
+      }
 
       return { success: true, message: 'token刷新成功' }
     } catch (error) {
@@ -200,7 +206,13 @@ export function createAuthStore() {
   // 获取用户组名称
   async function fetchGroupName() {
     // 确保用户信息已完全加载
-    if (user.value && user.value.groupId) {
+    if (user.value) {
+      // 如果用户没有groupId，设置默认用户组名称
+      if (!user.value.groupId) {
+        groupName.value = '默认用户组';
+        return { success: true, message: '用户未分配到任何用户组' };
+      }
+      
       try {
         const response = await axios.get(`${API_BASE_URL}/groups/${user.value.groupId}`, {
           headers: {
@@ -208,9 +220,17 @@ export function createAuthStore() {
           }
         });
         groupName.value = response.data.group.name;
-        return { success: true, groupName: response.data.group.name };
+        return { success: true, groupName: response.data.group.name, group: response.data.group };
       } catch (err) {
         console.error('获取用户组信息错误:', err);
+        // 如果是404错误，说明用户组已被删除，需要更新用户信息
+        if (err.response && err.response.status === 404) {
+          // 将用户的groupId设置为null
+          user.value.groupId = null;
+          // 设置默认的用户组名称
+          groupName.value = '默认用户组';
+          return { success: true, message: '用户组已被删除，已更新为默认用户组' };
+        }
         // 如果是401错误，将在调用处处理token刷新逻辑
         return { success: false, message: '获取用户组信息失败' };
       }

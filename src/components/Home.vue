@@ -15,6 +15,12 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
                 {{ groupName || '无用户组' }}
+                <span v-if="groupLeaders && groupLeaders.length > 0" class="ml-2">
+                  (组长: {{ groupLeaders.map(id => {
+                    const user = allUsers.find(u => u.id === id);
+                    return user ? user.name : id;
+                  }).join(', ') }})
+                </span>
               </span>
             </div>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -90,7 +96,7 @@
                 </span>
               </div>
               
-              <p class="mt-2 text-gray-600" v-if="todo.description">{{ todo.description }}</p>
+              <p class="mt-2 text-gray-600" v-if="todo.description">{{ todo.description.length > 100 ? todo.description.substring(0, 100) + '...' : todo.description }}</p>
               
               <div class="mt-4 flex flex-wrap gap-2">
                 <span 
@@ -489,6 +495,7 @@ const error = ref(null)
 // 用户和组数据
 const allUsers = ref([])
 const allGroups = ref([])
+const groupLeaders = ref([])
 const selectedUsers = ref([])
 const selectedGroups = ref([])
 const selectedEditUsers = ref([])
@@ -500,8 +507,15 @@ onMounted(async () => {
   //console.log('用户信息:', authStore.user.value)
   //console.log('Token:', authStore.token.value)
   
-  // 获取用户组名称
-  await authStore.fetchGroupName()
+  // 获取用户组名称和组长信息
+  const groupResult = await authStore.fetchGroupName()
+  if (groupResult.success) {
+    // 如果返回了组信息，更新组长信息
+    if (groupResult.group && groupResult.group.leaders) {
+      groupLeaders.value = groupResult.group.leaders
+          }
+    // 如果没有组信息，但获取成功，说明用户没有分配到组，保持默认值
+  }
   
   // 获取所有用户和组数据
   await fetchAllUsers()
