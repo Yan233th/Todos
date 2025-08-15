@@ -24,7 +24,7 @@
           <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-20">
             <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">个人信息</a>
             <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">系统设置</a>
-            <a v-if="user.role === 'admin'" href="/admin" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">后台管理</a>
+            <a v-if="user && user.role === 'admin'" href="/admin" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">后台管理</a>
             <button @click="forceLogout" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200">
               <span class="flex items-center text-red-600 font-medium">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -71,7 +71,8 @@
           <div 
             v-for="todo in todos" 
             :key="todo.id" 
-            class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
+            class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer"
+            @click="goToTaskDetail(todo.id)"
           >
             <div class="p-6">
               <div class="flex justify-between items-start">
@@ -128,13 +129,13 @@
                 <span class="text-xs text-gray-500">创建于 {{ formatDate(todo.create_time) }}</span>
                 <div class="flex space-x-2">
                   <button 
-                    @click="editTodo(todo)" 
+                    @click.stop="editTodo(todo)" 
                     class="btn btn-sm btn-outline btn-primary"
                   >
                     编辑
                   </button>
                   <button 
-                    @click="deleteTodo(todo.id)" 
+                    @click.stop="deleteTodo(todo.id)" 
                     class="btn btn-sm btn-outline btn-error"
                   >
                     删除
@@ -469,12 +470,16 @@
 import { inject, computed, ref, onMounted } from 'vue'
 import axios from 'axios'
 import { API_BASE_URL } from '../config'
+import { useRouter } from 'vue-router'
 
 axios.defaults.responseType = 'json';
 axios.defaults.headers.common['Accept'] = 'application/json; charset=utf-8';
 
 // 注入认证状态
 const authStore = inject('authStore')
+
+// 获取路由实例
+const router = useRouter()
 
 // Todos数据
 const todos = ref([])
@@ -822,5 +827,10 @@ const deleteTodo = async (id) => {
     console.error('删除任务失败:', error);
     showToast('删除任务失败，请重试', 'error');
   }
+};
+
+// 导航到任务详情页面
+const goToTaskDetail = (id) => {
+  router.push(`/task/${id}`);
 };
 </script>

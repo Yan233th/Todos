@@ -5,6 +5,7 @@ import Login from './components/Login.vue'
 import Register from './components/Register.vue'
 import Home from './components/Home.vue'
 import Admin from './components/Admin.vue'
+import TaskDetail from './components/TaskDetail.vue'
 import { createAuthStore } from './store/auth'
 import "./main.css"
 
@@ -14,6 +15,7 @@ const routes = [
   { path: '/register', component: Register, meta: { requiresAuth: false } },
   { path: '/home', component: Home, meta: { requiresAuth: true } },
   { path: '/admin', component: Admin, meta: { requiresAuth: true } },
+  { path: '/task/:id', component: TaskDetail, meta: { requiresAuth: true } },
   { path: '/', redirect: '/home' },
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ]
