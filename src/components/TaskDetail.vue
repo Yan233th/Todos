@@ -84,6 +84,25 @@
             <p class="text-gray-500 italic" v-else>暂无描述</p>
           </div>
           
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="text-lg font-semibold text-gray-700">任务详情</h3>
+              <button 
+                v-if="hasEditPermission"
+                @click="editDetail" 
+                class="btn btn-sm btn-outline btn-primary"
+              >
+                编辑详情
+              </button>
+            </div>
+            <div 
+              v-if="todoDetail" 
+              class="markdown-content text-gray-600"
+              v-html="formatDetailContent(todoDetail)"
+            ></div>
+            <p v-else class="text-gray-500 italic">暂无详情内容</p>
+          </div>
+          
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div class="bg-gray-50 p-4 rounded-lg">
               <h3 class="text-lg font-semibold text-gray-700 mb-3">任务信息</h3>
@@ -133,7 +152,7 @@
                       :key="id" 
                       class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800"
                     >
-                      {{ getUserById(id)?.name || id }}
+                      {{ (getUserById(id) && getUserById(id).name) ? getUserById(id).name : id }}
                     </span>
                     <span v-else class="text-gray-500 italic">无关联用户</span>
                   </div>
@@ -148,7 +167,7 @@
                       :key="id" 
                       class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800"
                     >
-                      {{ getGroupById(id)?.name || id }}
+                      {{ (getGroupById(id) && getGroupById(id).name) ? getGroupById(id).name : id }}
                     </span>
                     <span v-else class="text-gray-500 italic">无关联用户组</span>
                   </div>
@@ -159,12 +178,14 @@
           
           <div class="flex justify-end space-x-3">
             <button 
+              v-if="hasEditPermission"
               @click="editTodo" 
               class="btn btn-primary"
             >
               编辑任务
             </button>
             <button 
+              v-if="hasEditPermission"
               @click="deleteTodo" 
               class="btn btn-error"
             >
@@ -174,13 +195,52 @@
         </div>
       </div>
     </div>
+    
+    <!-- 编辑详情模态框 -->
+    <div v-if="isEditingDetail" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-1">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">编辑任务详情</h3>
+        </div>
+        <div class="px-6 py-4">
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="todo-detail">
+              详情内容
+            </label>
+            <textarea 
+              v-model="editedDetail" 
+              id="todo-detail" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+              placeholder="请输入任务详情内容"
+              rows="10"
+            ></textarea>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
+          <button 
+            @click="cancelEditDetail" 
+            class="btn btn-ghost"
+          >
+            取消
+          </button>
+          <button 
+            @click="saveDetail" 
+            class="btn btn-primary"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
+<!-- 移除多余的结束标签，修复无效结束标签问题 -->
 </template>
 
 <script setup>
 import { inject, ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import { marked } from 'marked'
 import { API_BASE_URL } from '../config'
 
 // 注入认证状态
@@ -195,6 +255,14 @@ const todo = ref(null)
 const loading = ref(true)
 const error = ref(null)
 
+// 权限控制数据
+const hasEditPermission = ref(false)
+
+// 任务详情数据
+const todoDetail = ref('')
+const isEditingDetail = ref(false)
+const editedDetail = ref('')
+
 // 用户和组数据
 const allUsers = ref([])
 const allGroups = ref([])
@@ -202,6 +270,11 @@ const allGroups = ref([])
 // 获取用户信息
 const user = computed(() => authStore.user.value)
 const groupName = ref('')
+
+// 修复：确保user变量正确初始化
+if (!user.value) {
+  user.value = {}
+}
 
 onMounted(async () => {
   try {
@@ -262,11 +335,13 @@ const fetchAllGroups = async () => {
 
 // 根据ID获取用户
 const getUserById = (id) => {
+  if (!Array.isArray(allUsers.value)) return null
   return allUsers.value.find(user => user.id === id)
 }
 
 // 根据ID获取用户组
 const getGroupById = (id) => {
+  if (!Array.isArray(allGroups.value)) return null
   return allGroups.value.find(group => group.id === id)
 }
 
@@ -286,12 +361,131 @@ const fetchTodo = async () => {
     console.log('Todo response:', response.data)
     todo.value = response.data.todo
     console.log('Todo value set:', todo.value)
+    
+    // 检查用户是否有编辑权限
+    checkEditPermission()
+    
+    // 获取任务详情内容
+    await fetchTodoDetail()
   } catch (err) {
     console.error('获取任务详情失败:', err)
     error.value = '获取任务详情失败，请重试'
   } finally {
     loading.value = false
   }
+}
+
+// 检查用户是否有编辑权限
+const checkEditPermission = () => {
+  // 如果用户是管理员，拥有编辑权限
+  if (user.value.role === 'admin') {
+    hasEditPermission.value = true
+    return
+  }
+  
+  // 检查用户是否是任务的创建者
+  if (todo.value.creator_id && todo.value.creator_id === user.value.id) {
+    hasEditPermission.value = true
+    return
+  }
+  
+  // 检查用户是否是任务的管理员
+  if (todo.value.administrator_id && todo.value.administrator_id === user.value.id) {
+    hasEditPermission.value = true
+    return
+  }
+  
+  // 检查用户是否是关联用户组的组长
+  if (todo.value.Belonging_groups && Array.isArray(todo.value.Belonging_groups)) {
+    const userGroup = allGroups.value.find(group => group.id === user.value.group_id)
+    if (userGroup && userGroup.leaders && Array.isArray(userGroup.leaders)) {
+      if (userGroup.leaders.includes(user.value.id)) {
+        // 用户是某个组的组长，检查任务是否关联到该组
+        if (todo.value.Belonging_groups.some(groupId => groupId === user.value.group_id)) {
+          hasEditPermission.value = true
+          return
+        }
+      }
+    }
+  }
+  
+  // 默认没有编辑权限
+  hasEditPermission.value = false
+}
+
+// 获取任务详情内容
+const fetchTodoDetail = async () => {
+  try {
+    // 检查后端是否存在该任务的详情
+    const response = await axios.get(`${API_BASE_URL}/todo-details/${route.params.id}/exists`, {
+      headers: {
+        'Authorization': `Bearer ${authStore.token.value}`
+      }
+    })
+    
+    // 如果存在详情，则获取详情内容
+    if (response.data.exists) {
+      const detailResponse = await axios.get(`${API_BASE_URL}/todo-details/${route.params.id}`, {
+        headers: {
+          'Authorization': `Bearer ${authStore.token.value}`
+        }
+      })
+      todoDetail.value = detailResponse.data.detail
+    }
+  } catch (err) {
+    // 如果是404错误，说明详情不存在，这是正常的
+    if (err.response && err.response.status !== 404) {
+      console.error('获取任务详情内容失败:', err)
+    }
+  }
+}
+
+// 编辑详情
+const editDetail = () => {
+  // 检查权限
+  if (!hasEditPermission.value) {
+    alert('您没有权限编辑此任务的详情')
+    return
+  }
+  
+  isEditingDetail.value = true
+  editedDetail.value = todoDetail.value
+}
+
+// 保存详情
+const saveDetail = async () => {
+  try {
+    // 将详情内容保存到后端
+    await axios.post(`${API_BASE_URL}/todo-details/${route.params.id}`, 
+      { detail: editedDetail.value },
+      {
+        headers: {
+          'Authorization': `Bearer ${authStore.token.value}`
+        }
+      }
+    )
+    
+    todoDetail.value = editedDetail.value
+    isEditingDetail.value = false
+    
+    // 显示保存成功的提示
+    alert('详情保存成功')
+  } catch (err) {
+    console.error('保存任务详情失败:', err)
+    alert('保存任务详情失败，请重试')
+  }
+}
+
+// 取消编辑详情
+const cancelEditDetail = () => {
+  isEditingDetail.value = false
+  editedDetail.value = ''
+}
+
+// 格式化详情内容
+const formatDetailContent = (content) => {
+  // 使用 marked.js 解析 Markdown 内容
+  return marked(content)
 }
 
 // 格式化日期
@@ -325,12 +519,50 @@ const goBack = () => {
 
 // 编辑任务
 const editTodo = () => {
+  // 检查权限
+  if (!hasEditPermission.value) {
+    alert('您没有权限编辑此任务')
+    return
+  }
+  
   // 这里可以实现编辑功能
   console.log('编辑任务:', todo.value.id)
 }
 
+// 删除任务详情
+const deleteTodoDetail = async () => {
+  try {
+    // 从后端删除该任务的详情
+    await axios.delete(`${API_BASE_URL}/todo-details/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${authStore.token.value}`
+      }
+    })
+    todoDetail.value = ''
+    
+    // 显示删除成功的提示
+    alert('详情删除成功')
+  } catch (err) {
+    // 如果是404错误，说明详情不存在，这也是可以接受的
+    if (err.response && err.response.status !== 404) {
+      console.error('删除任务详情失败:', err)
+      alert('删除任务详情失败，请重试')
+    } else {
+      // 即使后端没有详情，前端也清空显示
+      todoDetail.value = ''
+      alert('详情删除成功')
+    }
+  }
+}
+
 // 删除任务
 const deleteTodo = async () => {
+  // 检查权限
+  if (!hasEditPermission.value) {
+    alert('您没有权限删除此任务')
+    return
+  }
+  
   if (!confirm('确定要删除这个任务吗？')) return
   
   try {
@@ -359,4 +591,201 @@ const forceLogout = () => {
 </script>
 
 <style scoped>
+/* Enhanced Markdown content styling */
+.markdown-content {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.714; /* 24px */
+  color: #374151; /* gray-700 */
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+}
+
+/* Headers */
+.markdown-content :deep(h1) {
+  font-size: 1.875rem; /* 30px */
+  font-weight: 800;
+  margin: 2rem 0 1rem 0;
+  color: #111827; /* gray-900 */
+  letter-spacing: -0.025em;
+}
+
+.markdown-content :deep(h2) {
+  font-size: 1.5rem; /* 24px */
+  font-weight: 700;
+  margin: 1.75rem 0 1rem 0;
+  color: #111827; /* gray-900 */
+  letter-spacing: -0.025em;
+}
+
+.markdown-content :deep(h3) {
+  font-size: 1.25rem; /* 20px */
+  font-weight: 600;
+  margin: 1.5rem 0 0.75rem 0;
+  color: #111827; /* gray-900 */
+}
+
+.markdown-content :deep(h4) {
+  font-size: 1.125rem; /* 18px */
+  font-weight: 600;
+  margin: 1.25rem 0 0.75rem 0;
+  color: #111827; /* gray-900 */
+}
+
+.markdown-content :deep(h5) {
+  font-size: 1rem; /* 16px */
+  font-weight: 600;
+  margin: 1rem 0 0.5rem 0;
+  color: #111827; /* gray-900 */
+}
+
+.markdown-content :deep(h6) {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 600;
+  margin: 1rem 0 0.5rem 0;
+  color: #111827; /* gray-900 */
+  text-transform: uppercase;
+}
+
+/* Paragraphs */
+.markdown-content :deep(p) {
+  margin-bottom: 1.25rem;
+  line-height: 1.714;
+}
+
+/* Lists */
+.markdown-content :deep(ul), 
+.markdown-content :deep(ol) {
+  margin: 1.25rem 0;
+  padding-left: 1.75rem;
+}
+
+.markdown-content :deep(li) {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content :deep(ul li) {
+  list-style-type: disc;
+}
+
+.markdown-content :deep(ul ul li) {
+  list-style-type: circle;
+}
+
+.markdown-content :deep(ul ul ul li) {
+  list-style-type: square;
+}
+
+.markdown-content :deep(ol li) {
+  list-style-type: decimal;
+}
+
+.markdown-content :deep(ol ol li) {
+  list-style-type: lower-alpha;
+}
+
+.markdown-content :deep(ol ol ol li) {
+  list-style-type: lower-roman;
+}
+
+/* Code */
+.markdown-content :deep(code) {
+  background-color: #f3f4f6; /* gray-100 */
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem; /* 14px */
+  color: #374151; /* gray-700 */
+  font-family: 'Fira Code', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.markdown-content :deep(pre) {
+  background-color: #f9fafb; /* gray-50 */
+  border: 1px solid #e5e7eb; /* gray-200 */
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.markdown-content :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 0.875rem; /* 14px */
+  font-weight: 400;
+}
+
+/* Blockquotes */
+.markdown-content :deep(blockquote) {
+  border-left: 4px solid #d1d5db; /* gray-300 */
+  padding: 0.25rem 1.25rem;
+  margin: 1.25rem 0;
+  color: #4b5563; /* gray-600 */
+  background-color: #f9fafb; /* gray-50 */
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+/* Links */
+.markdown-content :deep(a) {
+  color: #3b82f6; /* blue-500 */
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.markdown-content :deep(a:hover) {
+  color: #1d4ed8; /* blue-700 */
+  text-decoration: none;
+}
+
+/* Tables */
+.markdown-content :deep(table) {
+  width: 100%;
+  margin: 1.25rem 0;
+  border-collapse: collapse;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+.markdown-content :deep(th), 
+.markdown-content :deep(td) {
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb; /* gray-200 */
+  text-align: left;
+}
+
+.markdown-content :deep(th) {
+  background-color: #f3f4f6; /* gray-100 */
+  font-weight: 600;
+  color: #111827; /* gray-900 */
+}
+
+.markdown-content :deep(tr:nth-child(even)) {
+  background-color: #f9fafb; /* gray-50 */
+}
+
+/* Horizontal rule */
+.markdown-content :deep(hr) {
+  margin: 1.75rem 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb; /* gray-200 */
+  height: 1px;
+}
+
+/* Images */
+.markdown-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+/* Strong and emphasis */
+.markdown-content :deep(strong) {
+  font-weight: 700;
+}
+
+.markdown-content :deep(em) {
+  font-style: italic;
+}
 </style>

@@ -3,6 +3,8 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -109,7 +111,11 @@ function initializeDatabase() {
                 delete_time TIMESTAMP NULL,
                 Deadline DATETIME,
                 Priority INT DEFAULT 0,
-                Status INT DEFAULT 0
+                Status INT DEFAULT 0,
+                creator_id INT,
+                administrator_id INT,
+                FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (administrator_id) REFERENCES users(id) ON DELETE SET NULL
               )
             `;
             
@@ -157,6 +163,13 @@ function initializeDefaultUsers(db) {
       });
     } else {
       console.log('默认管理员用户已存在');
+    }
+    
+    // 创建用于存储任务详情的目录
+    const todoDetailsDir = path.join(__dirname, 'todo-details');
+    if (!fs.existsSync(todoDetailsDir)) {
+      fs.mkdirSync(todoDetailsDir, { recursive: true });
+      console.log('任务详情存储目录已创建');
     }
     
     // 数据库初始化完成后启动服务器
@@ -710,7 +723,81 @@ function authenticateToken(req, res, next) {
       next();
     });
   });
-};
+}
+
+// 检查用户是否有权限编辑或删除待办事项
+async function checkTodoPermission(req, res, next) {
+  const { id } = req.params;
+  const userId = req.user.userId;
+  
+  // 查询待办事项的创建者和管理员
+  const query = 'SELECT creator_id, administrator_id, Belonging_groups FROM TodosList WHERE id = ?';
+  
+  db.query(query, [id], async (err, results) => {
+    if (err) {
+      console.error('查询待办事项权限失败:', err);
+      return res.status(500).json({ message: '服务器内部错误' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: '未找到指定的待办事项' });
+    }
+    
+    const todo = results[0];
+    
+    // 检查是否是创建者或管理员
+    if (userId === todo.creator_id || userId === todo.administrator_id) {
+      return next();
+    }
+    
+    // 检查是否是系统管理员
+    const userQuery = 'SELECT role FROM users WHERE id = ?';
+    db.query(userQuery, [userId], (err, userResults) => {
+      if (err) {
+        console.error('查询用户角色失败:', err);
+        return res.status(500).json({ message: '服务器内部错误' });
+      }
+      
+      if (userResults.length > 0 && userResults[0].role === 'admin') {
+        return next();
+      }
+      
+      // 检查是否是关联用户组的组长
+      if (todo.Belonging_groups) {
+        const groupIds = todo.Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        
+        if (groupIds.length > 0) {
+          const groupQuery = 'SELECT leaders FROM `groups` WHERE id IN (?)';
+          db.query(groupQuery, [groupIds], (err, groupResults) => {
+            if (err) {
+              console.error('查询用户组失败:', err);
+              return res.status(500).json({ message: '服务器内部错误' });
+            }
+            
+            // 检查用户是否是任何关联组的组长
+            for (const group of groupResults) {
+              if (group.leaders) {
+                const leaders = JSON.parse(group.leaders);
+                if (Array.isArray(leaders) && leaders.includes(userId)) {
+                  return next();
+                }
+              }
+            }
+            
+            // 如果以上条件都不满足，则拒绝访问
+            return res.status(403).json({ message: '您没有权限执行此操作' });
+          });
+        } else {
+          // 如果没有关联组且不是创建者或管理员，则拒绝访问
+          return res.status(403).json({ message: '您没有权限执行此操作' });
+        }
+      } else {
+        // 如果没有关联组且不是创建者或管理员，则拒绝访问
+        return res.status(403).json({ message: '您没有权限执行此操作' });
+      }
+    });
+  });
+}
 
 
 // 创建待办事项API
@@ -749,14 +836,14 @@ app.post('/todos', authenticateToken, (req, res) => {
     }
   }
   
-  // 插入新待办事项
+  // 插入新待办事项，设置创建者为当前用户
   const insertQuery = `
     INSERT INTO TodosList 
-    (name, description, Deadline, Priority, Status, Belonging_users, Belonging_groups)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (name, description, Deadline, Priority, Status, Belonging_users, Belonging_groups, creator_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `;
   
-  db.query(insertQuery, [name, description, formattedDeadline, priority, Status, belongingUsers, belongingGroups], (err, results) => {
+  db.query(insertQuery, [name, description, formattedDeadline, priority, Status, belongingUsers, belongingGroups, req.user.userId], (err, results) => {
     if (err) {
       console.error('创建待办事项失败:', err);
       return res.status(500).json({ message: '服务器内部错误' });
@@ -794,7 +881,9 @@ app.get('/todos', authenticateToken, (req, res) => {
         return priorityMap[todo.Priority] || '普通';
       })(),
       Belonging_users: todo.Belonging_users ? todo.Belonging_users.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
-      Belonging_groups: todo.Belonging_groups ? todo.Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : []
+      Belonging_groups: todo.Belonging_groups ? todo.Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
+      creator_id: todo.creator_id ? parseInt(todo.creator_id) : null,
+      administrator_id: todo.administrator_id ? parseInt(todo.administrator_id) : null
     }));
     
     res.json({ todos });
@@ -832,7 +921,9 @@ app.get('/todos/:id', authenticateToken, (req, res) => {
         return priorityMap[results[0].Priority] || '普通';
       })(),
       Belonging_users: results[0].Belonging_users ? results[0].Belonging_users.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
-      Belonging_groups: results[0].Belonging_groups ? results[0].Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : []
+      Belonging_groups: results[0].Belonging_groups ? results[0].Belonging_groups.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
+      creator_id: results[0].creator_id ? parseInt(results[0].creator_id) : null,
+      administrator_id: results[0].administrator_id ? parseInt(results[0].administrator_id) : null
     };
     
     res.json({ todo });
@@ -840,7 +931,7 @@ app.get('/todos/:id', authenticateToken, (req, res) => {
 });
 
 // 更新待办事项API
-app.put('/todos/:id', authenticateToken, (req, res) => {
+app.put('/todos/:id', authenticateToken, checkTodoPermission, (req, res) => {
   const { id } = req.params;
   const { name, description, deadline, Priority, Status, Belonging_users, Belonging_groups } = req.body;
   
@@ -925,7 +1016,7 @@ app.put('/todos/:id', authenticateToken, (req, res) => {
 });
 
 // 删除待办事项API
-app.delete('/todos/:id', authenticateToken, (req, res) => {
+app.delete('/todos/:id', authenticateToken, checkTodoPermission, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM TodosList WHERE id = ?';
   
@@ -937,6 +1028,17 @@ app.delete('/todos/:id', authenticateToken, (req, res) => {
     
     if (results.affectedRows === 0) {
       return res.status(404).json({ message: '未找到指定的待办事项' });
+    }
+    
+    // 同步删除相关的详情文件
+    const detailPath = getTodoDetailPath(id);
+    if (fs.existsSync(detailPath)) {
+      fs.unlink(detailPath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error('删除任务详情文件失败:', unlinkErr);
+          // 不返回错误给客户端，因为数据库记录已成功删除
+        }
+      });
     }
     
     res.json({ message: '待办事项删除成功' });
@@ -952,3 +1054,92 @@ function startServer() {
 
 // 只在数据库初始化完成后启动服务器
 // 这里我们在initializeDatabase函数中调用startServer
+
+// 获取任务详情存储路径
+function getTodoDetailPath(todoId) {
+  const todoDetailsDir = path.join(__dirname, 'todo-details');
+  return path.join(todoDetailsDir, `todo-${todoId}.json`);
+}
+
+// 查询是否存在Todo详情 API
+app.get('/todo-details/:id/exists', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const detailPath = getTodoDetailPath(id);
+  
+  const exists = fs.existsSync(detailPath);
+  res.json({ exists });
+});
+
+// 存储Todo详情 API
+app.post('/todo-details/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const { detail } = req.body;
+  
+  const detailPath = getTodoDetailPath(id);
+  
+  // 创建详情数据对象
+  const detailData = {
+    todoId: id,
+    detail: detail,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  
+  // 写入文件
+  fs.writeFile(detailPath, JSON.stringify(detailData, null, 2), 'utf8', (err) => {
+    if (err) {
+      console.error('存储任务详情失败:', err);
+      return res.status(500).json({ message: '存储任务详情失败' });
+    }
+    
+    res.json({ message: '任务详情存储成功' });
+  });
+});
+
+// 获取Todo详情 API
+app.get('/todo-details/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const detailPath = getTodoDetailPath(id);
+  
+  // 检查文件是否存在
+  if (!fs.existsSync(detailPath)) {
+    return res.status(404).json({ message: '任务详情不存在' });
+  }
+  
+  // 读取文件
+  fs.readFile(detailPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('读取任务详情失败:', err);
+      return res.status(500).json({ message: '读取任务详情失败' });
+    }
+    
+    try {
+      const detailData = JSON.parse(data);
+      res.json({ detail: detailData.detail });
+    } catch (parseErr) {
+      console.error('解析任务详情失败:', parseErr);
+      return res.status(500).json({ message: '解析任务详情失败' });
+    }
+  });
+});
+
+// 删除Todo详情 API
+app.delete('/todo-details/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const detailPath = getTodoDetailPath(id);
+  
+  // 检查文件是否存在
+  if (!fs.existsSync(detailPath)) {
+    return res.status(404).json({ message: '任务详情不存在' });
+  }
+  
+  // 删除文件
+  fs.unlink(detailPath, (err) => {
+    if (err) {
+      console.error('删除任务详情失败:', err);
+      return res.status(500).json({ message: '删除任务详情失败' });
+    }
+    
+    res.json({ message: '任务详情删除成功' });
+  });
+});

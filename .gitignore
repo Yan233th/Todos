@@ -136,3 +136,5 @@ dist
 .pnp.*
 
 .trae/**
+backend/todo-details/**
+

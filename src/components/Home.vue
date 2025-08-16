@@ -135,12 +135,20 @@
                 <span class="text-xs text-gray-500">创建于 {{ formatDate(todo.create_time) }}</span>
                 <div class="flex space-x-2">
                   <button 
+                    @click.stop="editTodoDetail(todo.id)" 
+                    class="btn btn-sm btn-outline btn-primary"
+                  >
+                    查看详情
+                  </button>
+                  <button 
+                    v-if="checkEditPermission(todo)"
                     @click.stop="editTodo(todo)" 
                     class="btn btn-sm btn-outline btn-primary"
                   >
                     编辑
                   </button>
                   <button 
+                    v-if="checkEditPermission(todo)"
                     @click.stop="deleteTodo(todo.id)" 
                     class="btn btn-sm btn-outline btn-error"
                   >
@@ -555,6 +563,36 @@ const fetchAllGroups = async () => {
   }
 }
 
+// 检查用户是否有编辑权限
+const checkEditPermission = (todo) => {
+  // 检查用户是否是管理员
+  if (authStore.user.value && authStore.user.value.role === 'admin') {
+    return true
+  }
+  
+  // 检查用户是否是任务的创建者
+  if (todo.creator_id === authStore.user.value.id) {
+    return true
+  }
+  
+  // 检查用户是否是任务的管理员
+  if (todo.admin_users && todo.admin_users.includes(authStore.user.value.id)) {
+    return true
+  }
+  
+  // 检查用户是否是任务关联用户组的组长
+  if (todo.Belonging_groups && todo.Belonging_groups.length > 0) {
+    for (const groupId of todo.Belonging_groups) {
+      const group = allGroups.value.find(g => g.id === groupId)
+      if (group && group.leaders && group.leaders.includes(authStore.user.value.id)) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
 // 获取Todos数据
 const fetchTodos = async () => {
   try {
@@ -746,6 +784,12 @@ const submitNewTodo = async () => {
 
 // 编辑Todo
 const editTodo = (todo) => {
+  // 检查权限
+  if (!checkEditPermission(todo)) {
+    alert('您没有权限编辑此任务');
+    return;
+  }
+  
   // 初始化编辑的Todo数据
   editingTodoId.value = todo.id;
   editTodoName.value = todo.name;
@@ -822,6 +866,13 @@ const updateTodo = async () => {
 
 // 删除Todo
 const deleteTodo = async (id) => {
+  // 找到要删除的todo以检查权限
+  const todo = todos.value.find(t => t.id === id);
+  if (todo && !checkEditPermission(todo)) {
+    alert('您没有权限删除此任务');
+    return;
+  }
+  
   if (!confirm('确定要删除这个任务吗？')) return;
   
   try {
@@ -845,6 +896,11 @@ const deleteTodo = async (id) => {
 
 // 导航到任务详情页面
 const goToTaskDetail = (id) => {
+  router.push(`/task/${id}`);
+};
+
+// 编辑任务详情
+const editTodoDetail = (id) => {
   router.push(`/task/${id}`);
 };
 </script>

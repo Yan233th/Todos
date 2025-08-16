@@ -38,6 +38,9 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (to.path === '/login' && isAuthenticated.value) {
     next('/home')
+  } else if (to.path === '/admin' && (!isAuthenticated.value || authStore.user.value.role !== 'admin')) {
+    // Only allow admin users to access the admin page
+    next('/home')
   } else {
     next()
   }
