@@ -334,9 +334,9 @@
     </div>
     
     <!-- 编辑Todo模态框 -->
-    <div v-if="isEditTodoModalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-1">
-        <div class="px-6 py-4 border-b border-gray-200">
+    <div v-if="isEditTodoModalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h3 class="text-lg font-medium text-gray-900">编辑任务</h3>
         </div>
         <div class="px-6 py-4">
@@ -460,21 +460,22 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-          <button 
-            @click="isEditTodoModalVisible = false" 
-            class="btn btn-ghost"
-          >
-            取消
-          </button>
-          <button 
-            @click="updateTodo" 
-            class="btn btn-primary"
-          >
-            更新任务
-          </button>
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+          <div class="flex justify-end space-x-3">
+            <button 
+              @click="isEditTodoModalVisible = false" 
+              class="btn btn-ghost"
+            >
+              取消
+            </button>
+            <button 
+              @click="updateTodo" 
+              class="btn btn-primary"
+            >
+              更新任务
+            </button>
+          </div>
         </div>
-        
       </div>
     </div>
   </div>

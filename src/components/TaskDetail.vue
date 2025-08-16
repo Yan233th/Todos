@@ -197,9 +197,9 @@
     </div>
     
     <!-- 编辑详情模态框 -->
-    <div v-if="isEditingDetail" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-1">
-        <div class="px-6 py-4 border-b border-gray-200">
+    <div v-if="isEditingDetail" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h3 class="text-lg font-medium text-gray-900">编辑任务详情</h3>
         </div>
         <div class="px-6 py-4">
@@ -216,19 +216,167 @@
             ></textarea>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-          <button 
-            @click="cancelEditDetail" 
-            class="btn btn-ghost"
-          >
-            取消
-          </button>
-          <button 
-            @click="saveDetail" 
-            class="btn btn-primary"
-          >
-            保存
-          </button>
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+          <div class="flex justify-end space-x-3">
+            <button 
+              @click="cancelEditDetail" 
+              class="btn btn-ghost"
+            >
+              取消
+            </button>
+            <button 
+              @click="saveDetail" 
+              class="btn btn-primary"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 编辑任务模态框 -->
+    <div v-if="isEditTodoModalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <h3 class="text-lg font-medium text-gray-900">编辑任务</h3>
+        </div>
+        <div class="px-6 py-4">
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-todo-name">
+              任务名称 *
+            </label>
+            <input 
+              v-model="editTodoName" 
+              id="edit-todo-name" 
+              type="text" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+              placeholder="请输入任务名称"
+            >
+          </div>
+          
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-todo-description">
+              任务描述
+            </label>
+            <textarea 
+              v-model="editTodoDescription" 
+              id="edit-todo-description" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+              placeholder="请输入任务描述"
+              rows="3"
+            ></textarea>
+          </div>
+          
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-todo-deadline">
+              截止日期
+            </label>
+            <input 
+              v-model="editTodoDeadline" 
+              id="edit-todo-deadline" 
+              type="date" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            >
+          </div>
+          
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-todo-priority">
+              优先级
+            </label>
+            <select 
+              v-model="editTodoPriority" 
+              id="edit-todo-priority" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            >
+              <option value="紧急">紧急</option>
+              <option value="重要">重要</option>
+              <option value="普通">普通</option>
+              <option value="低">低</option>
+            </select>
+          </div>
+          
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-todo-status">
+              状态
+            </label>
+            <select 
+              v-model="editTodoStatus" 
+              id="edit-todo-status" 
+              class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            >
+              <option value="计划中">计划中</option>
+              <option value="进行中">进行中</option>
+              <option value="已完成">已完成</option>
+              <option value="已取消">已取消</option>
+            </select>
+          </div>
+          
+          <!-- 用户选择控件 -->
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2">
+              关联用户
+            </label>
+            <div class="max-h-32 overflow-y-auto border rounded p-2">
+              <div 
+                v-for="user in allUsers" 
+                :key="user.id" 
+                class="flex items-center mb-1"
+              >
+                <input 
+                  type="checkbox" 
+                  :id="'edit-user-' + user.id" 
+                  :value="user.id" 
+                  v-model="selectedEditUsers" 
+                  class="mr-2"
+                >
+                <label :for="'edit-user-' + user.id" class="text-gray-700 text-sm">
+                  {{ user.name }} ({{ user.username }})
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 用户组选择控件 -->
+          <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2">
+              关联用户组
+            </label>
+            <div class="max-h-32 overflow-y-auto border rounded p-2">
+              <div 
+                v-for="group in allGroups" 
+                :key="group.id" 
+                class="flex items-center mb-1"
+              >
+                <input 
+                  type="checkbox" 
+                  :id="'edit-group-' + group.id" 
+                  :value="group.id" 
+                  v-model="selectedEditGroups" 
+                  class="mr-2"
+                >
+                <label :for="'edit-group-' + group.id" class="text-gray-700 text-sm">
+                  {{ group.name }}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+          <div class="flex justify-end space-x-3">
+            <button 
+              @click="isEditTodoModalVisible = false" 
+              class="btn btn-ghost"
+            >
+              取消
+            </button>
+            <button 
+              @click="updateTodo" 
+              class="btn btn-primary"
+            >
+              更新任务
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -262,6 +410,16 @@ const hasEditPermission = ref(false)
 const todoDetail = ref('')
 const isEditingDetail = ref(false)
 const editedDetail = ref('')
+
+// 编辑任务数据
+const isEditTodoModalVisible = ref(false)
+const editTodoName = ref('')
+const editTodoDescription = ref('')
+const editTodoDeadline = ref('')
+const editTodoPriority = ref('普通')
+const editTodoStatus = ref('计划中')
+const selectedEditUsers = ref([])
+const selectedEditGroups = ref([])
 
 // 用户和组数据
 const allUsers = ref([])
@@ -525,8 +683,30 @@ const editTodo = () => {
     return
   }
   
-  // 这里可以实现编辑功能
-  console.log('编辑任务:', todo.value.id)
+  // 初始化编辑的Todo数据
+  editTodoName.value = todo.value.name
+  editTodoDescription.value = todo.value.description
+  // 正确处理Deadline的各种情况
+  if (todo.value.Deadline) {
+    const deadlineDate = new Date(todo.value.Deadline)
+    // 检查日期是否有效
+    if (!isNaN(deadlineDate.getTime())) {
+      editTodoDeadline.value = deadlineDate.toISOString().split('T')[0]
+    } else {
+      editTodoDeadline.value = ''
+    }
+  } else {
+    editTodoDeadline.value = ''
+  }
+  editTodoPriority.value = todo.value.Priority
+  // 确保状态值正确转换为状态文本
+  editTodoStatus.value = getStatusText(String(todo.value.Status))
+  
+  // 初始化用户和组选择
+  selectedEditUsers.value = [...(todo.value.Belonging_users || [])]
+  selectedEditGroups.value = [...(todo.value.Belonging_groups || [])]
+  
+  isEditTodoModalVisible.value = true
 }
 
 // 删除任务详情
@@ -553,6 +733,66 @@ const deleteTodoDetail = async () => {
       alert('详情删除成功')
     }
   }
+}
+
+// 更新Todo
+const updateTodo = async () => {
+  try {
+    // 验证必填字段
+    if (!editTodoName.value.trim()) {
+      alert('请输入任务名称')
+      return
+    }
+    
+    // 准备数据
+    const todoData = {
+      name: editTodoName.value,
+      description: editTodoDescription.value,
+      deadline: editTodoDeadline.value || null,
+      Priority: editTodoPriority.value,
+      Status: getStatusValue(editTodoStatus.value),
+      // 使用用户选择的值，确保空数组被正确处理
+      Belonging_users: selectedEditUsers.value.length > 0 ? selectedEditUsers.value : [],
+      Belonging_groups: selectedEditGroups.value.length > 0 ? selectedEditGroups.value : []
+    }
+    
+    // 发送请求
+    const response = await axios.put(`${API_BASE_URL}/todos/${todo.value.id}`, todoData, {
+      headers: {
+        'Authorization': `Bearer ${authStore.token.value}`
+      }
+    })
+    
+    // 检查响应状态码
+    if (response.status === 200) {
+      // 成功后隐藏模态框
+      isEditTodoModalVisible.value = false
+      
+      // 显示成功消息
+      alert('任务更新成功')
+      
+      // 刷新任务数据
+      await fetchTodo()
+    } else {
+      alert('更新失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('更新任务失败:', error)
+    alert('更新任务失败，请重试')
+  }
+}
+
+// 获取状态值
+const getStatusValue = (statusText) => {
+  // 确保状态文本是字符串类型
+  const statusTextStr = String(statusText)
+  const statusValueMap = {
+    '计划中': '-1',
+    '进行中': '0',
+    '已完成': '1',
+    '已取消': '2'
+  }
+  return statusValueMap[statusTextStr] || '-1'
 }
 
 // 删除任务
