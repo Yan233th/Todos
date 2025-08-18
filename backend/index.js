@@ -12,7 +12,14 @@ const PORT = process.env.PORT || 3001;
 
 let db;
 
-app.use(cors());
+// 配置CORS以允许来自前端的请求
+const corsOptions = {
+  origin: true,
+  optionsSuccessStatus: 200,
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -20,22 +27,42 @@ app.use((req, res, next) => {
   next();
 });
 
-const dbInit = mysql.createConnection({
+let dbInit = mysql.createConnection({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD
+  password: process.env.DB_PASSWORD,
+  charset: 'utf8mb4'
 });
 
-function initializeDatabase() {
+function initializeDatabase(reconnectCount = 0) {
+  const maxReconnectAttempts = 10;
+  
   dbInit.connect((err) => {
     if (err) {
       console.error('MySQL服务器连接失败:', err);
+      if (reconnectCount < maxReconnectAttempts) {
+        console.log(`尝试重新连接 (${reconnectCount + 1}/${maxReconnectAttempts})...`);
+        setTimeout(() => {
+          // 重新创建连接
+          dbInit = mysql.createConnection({
+            host: process.env.DB_HOST,
+            port: process.env.DB_PORT,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            charset: 'utf8mb4'
+          });
+          initializeDatabase(reconnectCount + 1);
+        }, 5000); // 2秒后重试
+      } else {
+        console.error('达到最大重新连接尝试次数，无法连接到MySQL服务器');
+        process.exit(1); // 退出进程
+      }
       return;
     }
     console.log('成功连接到MySQL服务器');
     
-    dbInit.query('CREATE DATABASE IF NOT EXISTS ??', [process.env.DB_NAME || 'todos_db'], (err) => {
+    dbInit.query('CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', [process.env.DB_NAME || 'todos_db'], (err) => {
       if (err) {
         console.error('创建数据库失败:', err);
         return;
@@ -56,6 +83,15 @@ function initializeDatabase() {
       db.connect((err) => {
         if (err) {
           console.error('数据库连接失败:', err);
+          if (reconnectCount < maxReconnectAttempts) {
+            console.log(`尝试重新连接到数据库 (${reconnectCount + 1}/${maxReconnectAttempts})...`);
+            setTimeout(() => {
+              initializeDatabase(reconnectCount + 1);
+            }, 2000); // 2秒后重试
+          } else {
+            console.error('达到最大重新连接尝试次数，无法连接到数据库');
+            process.exit(1); // 退出进程
+          }
           return;
         }
         console.log('成功连接到MySQL数据库');

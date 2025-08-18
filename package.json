@@ -7,9 +7,11 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite preview --port 3000 --host 0.0.0.0\" \"npm run start --prefix backend\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "docker:build": "docker build -t todos-app .",
+    "docker:run": "docker-compose up"
   },
   "dependencies": {
     "axios": "^1.11.0",
@@ -19,10 +21,11 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
+    "concurrently": "^8.2.2",
     "daisyui": "^5.0.50",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "tailwindcss": "^3.4.17",
-    "vite": "^7.0.6",
+    "vite": "^7.1.2",
     "vite-plugin-vue-devtools": "^8.0.0"
   }
 }
